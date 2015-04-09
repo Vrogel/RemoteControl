@@ -130,7 +130,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 typedef struct _MSG_SCREEN
 {
-	int width, height;
 	BITMAPINFOHEADER bi;
 	DWORD dwBmpSize;
 }MSG_SCREEN;
@@ -145,8 +144,8 @@ void Refresh_Screen(HWND hWnd)
 	MSG_SCREEN *msg_screen = (MSG_SCREEN*)recv_buf;
 	HDC hdc = GetDC(hWnd);
 	StretchDIBits(hdc,
-		0, 0, ntohl(msg_screen->width), ntohl(msg_screen->height),
-		0, 0, ntohl(msg_screen->width), ntohl(msg_screen->height),
+		0, 0, msg_screen->bi.biWidth, msg_screen->bi.biHeight,
+		0, 0, msg_screen->bi.biWidth, msg_screen->bi.biHeight,
 		recv_buf + sizeof(MSG_SCREEN),
 		(BITMAPINFO*)&(msg_screen->bi),
 		DIB_RGB_COLORS,
@@ -155,7 +154,7 @@ void Refresh_Screen(HWND hWnd)
 
 	memset(mess, '\0', sizeof(mess));
 	wsprintf(mess, L"width=%d height=%d size=%d",
-		ntohl(msg_screen->width), ntohl(msg_screen->height), ntohl(msg_screen->dwBmpSize));
+		msg_screen->bi.biWidth, msg_screen->bi.biHeight, ntohl(msg_screen->dwBmpSize));
 	hdc = GetDC(hWnd);
 	TextOut(hdc, 0, 100, mess, 60);
 	ReleaseDC(hWnd, hdc);
@@ -183,8 +182,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	switch (message)
 	{
 	case WM_CREATE:
-		LoadWinsock(hWnd, "7.82.237.31");
-	//	LoadWinsock(hWnd, "127.0.0.1");
+	//	LoadWinsock(hWnd, "7.82.237.31");
+		LoadWinsock(hWnd, "127.0.0.1");
 		break;
 	case WM_COMMAND:
 		wmId    = LOWORD(wParam);
@@ -207,7 +206,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// TODO:  在此添加任意绘图代码...
 		EndPaint(hWnd, &ps);
 		break;
+//	case WM_MOUSEMOVE:
+//	case WM_LBUTTONDBLCLK:
 	case WM_LBUTTONDOWN:
+//	case WM_LBUTTONUP:
+//	case WM_RBUTTONDOWN:
+//	case WM_RBUTTONUP:
 		x = LOWORD(lParam);
 		y = HIWORD(lParam);
 		send_msg.hWnd = hWnd;
@@ -215,7 +219,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		send_msg.wParam = wParam;
 		send_msg.message = message;
 		send(sClient, (char*)&send_msg, sizeof(send_msg), 0);
-		Refresh_Screen(hWnd);
+//		Refresh_Screen(hWnd);
 		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);

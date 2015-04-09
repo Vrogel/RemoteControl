@@ -1,7 +1,9 @@
 #include "stdafx.h"
+#include "libjpeg\JPG.h"
 #include <WinSock2.h>
 #pragma comment(lib,"ws2_32.lib")
-
+#pragma comment(lib,"jpeg.lib")
+#define JDIMENSION UINT
 extern HINSTANCE hInst;		// 当前实例
 extern HWND hwnd;
 SOCKET Listen, Socket;
@@ -15,6 +17,8 @@ typedef struct _Remote_MSG Remote_MSG;
 
 DWORD WINAPI ClientThread(LPVOID lpParam);
 void GetScreen(HWND hWnd, SOCKET socket);
+void decompress(BYTE raw[], int nSize, BYTE *&data);
+BOOL compress2jpeg(BYTE raw[], JDIMENSION width, JDIMENSION height, BYTE **outdata, ULONG *nSize);
 
 //LoadWinsock用来装载和初始化Winsock，绑定本地地址，创建监听socket，等候客户端连接
 DWORD WINAPI LoadWinsock(LPVOID lpParam)
@@ -151,7 +155,6 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 
 typedef struct _MSG_SCREEN
 {
-	int width, height;
 	BITMAPINFOHEADER bi;
 	int dwBmpSize;
 }MSG_SCREEN;
@@ -185,13 +188,11 @@ void GetScreen(HWND hWnd, SOCKET socket)
 	bi.biBitCount = 32; // 按照每个像素用32bits表示转换
 	bi.biCompression = BI_RGB;
 	bi.biSizeImage = 0;
-	bi.biXPelsPerMeter = 0;
-	bi.biYPelsPerMeter = 0;
-	bi.biClrUsed = 0;
-	bi.biClrImportant = 0;
-
+	bi.biXPelsPerMeter = bi.biYPelsPerMeter = 0;
+	bi.biClrUsed = bi.biClrImportant = 0;
+	
 	DWORD dwBmpSize = ((bmpWnd.bmWidth * bi.biBitCount + 31) / 32) * 4 * bmpWnd.bmHeight; // 每一行像素位32对齐
-	char *lpbitmap = (char*)malloc(dwBmpSize); // 像素位指针
+	BYTE *lpbitmap = (BYTE*)malloc(dwBmpSize); // 像素位指针
 	GetDIBits(hdcMem, hbmWnd, 0, (UINT)bmpWnd.bmHeight,
 		lpbitmap,
 		(BITMAPINFO*)&bi,
@@ -203,28 +204,91 @@ void GetScreen(HWND hWnd, SOCKET socket)
 
 	char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+dwBmpSize); // 像素位指针
 	MSG_SCREEN *msg_head = (MSG_SCREEN *)send_buf;
-	msg_head->height = htonl(bmpWnd.bmHeight);
-	msg_head->width = htonl(bmpWnd.bmWidth);
 	msg_head->dwBmpSize = htonl(dwBmpSize);
 	memcpy(&(msg_head->bi), &bi, sizeof(BITMAPINFOHEADER));
 	memcpy(send_buf + sizeof(MSG_SCREEN), lpbitmap, dwBmpSize);
-	{
-		HDC hdc = GetDC(hwnd);
-		StretchDIBits(hdc,
-			100, 100, ntohl(msg_head->width), ntohl(msg_head->height),
-			0, 0, ntohl(msg_head->width), ntohl(msg_head->height),
-			send_buf + sizeof(MSG_SCREEN),
-			(BITMAPINFO*)&(msg_head->bi),
-			DIB_RGB_COLORS,
-			SRCCOPY);
-		ReleaseDC(hwnd, hdc);
-	}
 
-	int count = send(socket, send_buf, sizeof(MSG_SCREEN)+dwBmpSize, 0);
+//	int count = send(socket, send_buf, sizeof(MSG_SCREEN)+dwBmpSize, 0);
 	memset(mess, '\0', sizeof(mess));
-	wsprintf(mess, L"width=%d height=%d size=%d %d", ntohl(msg_head->width), ntohl(msg_head->height),
-		ntohl(msg_head->dwBmpSize), dwBmpSize);
+	wsprintf(mess, L"width=%d height=%d size=%d %d", msg_head->bi.biWidth, msg_head->bi.biHeight,
+		msg_head->dwBmpSize, dwBmpSize);
 	HDC hdc = GetDC(hWnd);
 	TextOut(hdc, 0, 100, mess, 60);
 	ReleaseDC(hWnd, hdc);
+
+	{
+		BYTE *outdata;
+		BYTE *rawdata;
+		ULONG nSize;
+		compress2jpeg(lpbitmap, bi.biWidth, bi.biHeight, &outdata, &nSize);
+		decompress(outdata, nSize, rawdata);
+		HDC hdc = GetDC(hWnd);
+		StretchDIBits(hdc,
+			0, 0, bi.biWidth, bi.biHeight,
+			0, 0, bi.biWidth, bi.biHeight,
+			rawdata,
+			(BITMAPINFO*)&(bi),
+			DIB_RGB_COLORS,
+			SRCCOPY);
+		ReleaseDC(hWnd, hdc);
+	}
+}
+
+BOOL compress2jpeg(BYTE raw[], JDIMENSION width, JDIMENSION height, BYTE **outdata, ULONG *nSize)
+{
+	struct jpeg_compress_struct cinfo;
+	struct jpeg_error_mgr jerr;
+
+	cinfo.err = jpeg_std_error(&jerr);
+	jpeg_create_compress(&cinfo);
+
+	*outdata = (BYTE*)malloc(4000000); // 用于缓存
+	jpeg_mem_dest(&cinfo, outdata, nSize);
+
+	cinfo.image_width = width;
+	cinfo.image_height = height;
+	cinfo.input_components = 3;
+	cinfo.in_color_space = JCS_RGB;
+
+	jpeg_set_defaults(&cinfo);
+	jpeg_set_quality(&cinfo, 80, true);
+
+	jpeg_start_compress(&cinfo, true);
+	JSAMPROW row_pointer[1];	// 一行位图
+	int row_stride;				// 每一行的字节数
+
+	row_stride = cinfo.image_width * 3;	// 如果不是索引图,此处需要乘以3
+
+	// 对每一行进行压缩
+	while (cinfo.next_scanline < cinfo.image_height) {
+		row_pointer[0] = &raw[cinfo.next_scanline * row_stride];
+		jpeg_write_scanlines(&cinfo, row_pointer, 1);
+	}
+
+	jpeg_finish_compress(&cinfo);
+	jpeg_destroy_compress(&cinfo);
+
+	return true;
+}
+
+void decompress(BYTE raw[], int nSize, BYTE *&data)
+{
+	struct jpeg_decompress_struct cinfo;
+	struct jpeg_error_mgr jerr;
+	JSAMPROW row_pointer[1];
+
+	cinfo.err = jpeg_std_error(&jerr);
+	jpeg_create_decompress(&cinfo);
+	jpeg_mem_src(&cinfo, raw, nSize);
+	jpeg_read_header(&cinfo, TRUE);
+	data = (BYTE*)malloc(sizeof(BYTE)*cinfo.image_width*cinfo.image_height*cinfo.num_components);
+	jpeg_start_decompress(&cinfo);
+
+	while (cinfo.output_scanline < cinfo.output_height)
+	{
+		row_pointer[0] = &data[cinfo.output_scanline*cinfo.image_width*cinfo.num_components];
+		jpeg_read_scanlines(&cinfo, row_pointer, 1);
+	}
+	jpeg_finish_decompress(&cinfo);
+	jpeg_destroy_decompress(&cinfo);
 }

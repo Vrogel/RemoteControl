@@ -41,6 +41,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
+    <LibraryPath>F:\Documents\Visual Studio 2013\Projects\RemoteControl\RemoCtl_Server\libjpeg;$(LibraryPath)</LibraryPath>
+    <IncludePath>D:\Downloads\jpeg-9a;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -77,12 +79,20 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="libjpeg\jmemdst.h" />
+    <ClInclude Include="libjpeg\jmemsrc.h" />
+    <ClInclude Include="libjpeg\jmyerror.h" />
+    <ClInclude Include="libjpeg\JPG.h" />
     <ClInclude Include="RemoCtl_Server.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="jmemdst.cpp" />
+    <ClCompile Include="jmemsrc.cpp" />
+    <ClCompile Include="jmyerror.cpp" />
+    <ClCompile Include="JPG.cpp" />
     <ClCompile Include="RemoCtl_Server.cpp" />
     <ClCompile Include="server.cpp" />
     <ClCompile Include="stdafx.cpp">
