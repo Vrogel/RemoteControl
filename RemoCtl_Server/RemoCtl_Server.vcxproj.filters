@@ -13,12 +13,6 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="源文件\JPG">
-      <UniqueIdentifier>{42c10ed7-1308-40ad-b29d-9ccbdc175033}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="头文件\JPG">
-      <UniqueIdentifier>{be23161d-9cdf-4dde-b68b-301966383a29}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -36,18 +30,6 @@
     <ClInclude Include="RemoCtl_Server.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="libjpeg\jmemsrc.h">
-      <Filter>头文件\JPG</Filter>
-    </ClInclude>
-    <ClInclude Include="libjpeg\jmyerror.h">
-      <Filter>头文件\JPG</Filter>
-    </ClInclude>
-    <ClInclude Include="libjpeg\JPG.h">
-      <Filter>头文件\JPG</Filter>
-    </ClInclude>
-    <ClInclude Include="libjpeg\jmemdst.h">
-      <Filter>头文件\JPG</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -58,18 +40,6 @@
     </ClCompile>
     <ClCompile Include="server.cpp">
       <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="jmemsrc.cpp">
-      <Filter>源文件\JPG</Filter>
-    </ClCompile>
-    <ClCompile Include="jmyerror.cpp">
-      <Filter>源文件\JPG</Filter>
-    </ClCompile>
-    <ClCompile Include="JPG.cpp">
-      <Filter>源文件\JPG</Filter>
-    </ClCompile>
-    <ClCompile Include="jmemdst.cpp">
-      <Filter>源文件\JPG</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

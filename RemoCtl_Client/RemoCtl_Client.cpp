@@ -142,6 +142,8 @@ void Refresh_Screen(HWND hWnd)
 	int count = recv(sClient, recv_buf, 10240000, 0);
 
 	MSG_SCREEN *msg_screen = (MSG_SCREEN*)recv_buf;
+	
+	
 	HDC hdc = GetDC(hWnd);
 	StretchDIBits(hdc,
 		0, 0, msg_screen->bi.biWidth, msg_screen->bi.biHeight,
@@ -206,7 +208,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// TODO:  在此添加任意绘图代码...
 		EndPaint(hWnd, &ps);
 		break;
-//	case WM_MOUSEMOVE:
+	case WM_MOUSEMOVE:
 //	case WM_LBUTTONDBLCLK:
 	case WM_LBUTTONDOWN:
 //	case WM_LBUTTONUP:
@@ -219,7 +221,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		send_msg.wParam = wParam;
 		send_msg.message = message;
 		send(sClient, (char*)&send_msg, sizeof(send_msg), 0);
-//		Refresh_Screen(hWnd);
+		Refresh_Screen(hWnd);
 		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);

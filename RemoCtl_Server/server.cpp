@@ -1,14 +1,15 @@
 #include "stdafx.h"
-#include "libjpeg\JPG.h"
 #include <WinSock2.h>
+#include <stdio.h>
+#include <GdiPlus.h>
 #pragma comment(lib,"ws2_32.lib")
-#pragma comment(lib,"jpeg.lib")
-#define JDIMENSION UINT
+#pragma comment(lib,"gdiPlus.lib")
+
 extern HINSTANCE hInst;		// 当前实例
 extern HWND hwnd;
 SOCKET Listen, Socket;
 int gPort = 5050;
-
+using namespace Gdiplus;
 struct _Remote_MSG
 {
 	HWND hWnd; UINT message; WPARAM wParam; LPARAM lParam;
@@ -17,8 +18,7 @@ typedef struct _Remote_MSG Remote_MSG;
 
 DWORD WINAPI ClientThread(LPVOID lpParam);
 void GetScreen(HWND hWnd, SOCKET socket);
-void decompress(BYTE raw[], int nSize, BYTE *&data);
-BOOL compress2jpeg(BYTE raw[], JDIMENSION width, JDIMENSION height, BYTE **outdata, ULONG *nSize);
+void capscreen(BYTE *image_buffer);
 
 //LoadWinsock用来装载和初始化Winsock，绑定本地地址，创建监听socket，等候客户端连接
 DWORD WINAPI LoadWinsock(LPVOID lpParam)
@@ -108,9 +108,9 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 	DWORD	iRet;
 	Remote_MSG* msg;
 	TCHAR	mess[128];
-//	MSG		amsg;
+	//	MSG		amsg;
 	HDC		hdc;
-	
+
 	// 设置超时值
 	timeout.tv_sec = 0;		// 秒
 	timeout.tv_usec = 0;	// 微秒
@@ -132,14 +132,10 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 			iRecv = recv(MySocket, szMessage, 2048, 0);
 			szMessage[iRecv] = '\0';
 			msg = (Remote_MSG*)szMessage;
-			memset(mess, '\0', sizeof(mess));
-			wsprintf(mess, L"x=%d y=%d %d", LOWORD(msg->lParam), HIWORD(msg->lParam), msg->message);
-			hdc = GetDC(hwnd);
-			TextOut(hdc, 0, 0, mess, 40);
-			ReleaseDC(hwnd, hdc);
+			
 			SetCursorPos(LOWORD(msg->lParam), HIWORD(msg->lParam));
 			GetScreen(hwnd, MySocket);
-	//		MessageBox(hwnd, mess, L"MESSAGE", MB_OK);
+			//		MessageBox(hwnd, mess, L"MESSAGE", MB_OK);
 			//amsg.hwnd = hwnd;
 			//amsg.lParam = msg->lParam;
 			//amsg.wParam = msg->wParam;
@@ -153,6 +149,55 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 	return 0;
 }
 
+
+void capscreen(BYTE *image_buffer, BITMAPINFOHEADER &bi)
+{
+	int width = GetSystemMetrics(SM_CXSCREEN);
+	int height = GetSystemMetrics(SM_CYSCREEN);
+
+	// 通过内存DC复制屏幕到DDB位图
+	HDC hdcWnd = GetDC(NULL);
+	HBITMAP hbmWnd = CreateCompatibleBitmap(hdcWnd, width, height);
+	HDC hdcMem = CreateCompatibleDC(hdcWnd);
+	SelectObject(hdcMem, hbmWnd);
+	BitBlt(hdcMem, 0, 0, width, height, hdcWnd, 0, 0, SRCCOPY);
+
+	BITMAP bmp;
+	GetObject(hdcMem, sizeof(BITMAP), &bmp);
+	// 把窗口DDB转为DIB
+	bi.biSize = sizeof(BITMAPINFOHEADER);
+	bi.biWidth = width;
+	bi.biHeight = height;
+	bi.biPlanes = 1;
+	bi.biBitCount = 32; // 按照每个像素用32bits表示转换
+	bi.biCompression = BI_RGB;
+	bi.biSizeImage = 0;
+	bi.biXPelsPerMeter = bi.biYPelsPerMeter = 0;
+	bi.biClrUsed = bi.biClrImportant = 0;
+
+	GetDIBits(hdcMem, hbmWnd, 0, (UINT)height, NULL, (BITMAPINFO*)&bi, DIB_RGB_COLORS);
+
+	GetDIBits(hdcMem, hbmWnd, 0, (UINT)height,
+		image_buffer,
+		(BITMAPINFO*)&bi,
+		DIB_RGB_COLORS);
+
+	DeleteDC(hdcMem);
+	DeleteObject(hbmWnd);
+
+	BITMAPFILEHEADER bfh = { 0 };
+	bfh.bfOffBits = sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER);
+	bfh.bfSize = bfh.bfOffBits + bmp.bmWidthBytes * bmp.bmHeight;
+	bfh.bfType = (WORD)0x4d42;
+
+	FILE *fp;
+	fopen_s(&fp, "lala.bmp", "w+b");
+	fwrite(&bfh, 1, sizeof(BITMAPFILEHEADER), fp);
+	fwrite(&bi, 1, sizeof(BITMAPINFOHEADER), fp);
+	fwrite(image_buffer, 1, 1600 * 900 * 4, fp);
+	fclose(fp);
+}
+
 typedef struct _MSG_SCREEN
 {
 	BITMAPINFOHEADER bi;
@@ -161,66 +206,38 @@ typedef struct _MSG_SCREEN
 
 void GetScreen(HWND hWnd, SOCKET socket)
 {
-	TCHAR	mess[128];
 	if (hWnd == NULL) return;
 
-	RECT rectClient;
-	GetClientRect(NULL, &rectClient);
-	int width = 1366;
-	int height = 768;
+	BYTE *image_buffer = (BYTE *)malloc(1600 * 900 * 4);
+	BYTE *image_buf = (BYTE *)malloc(1600 * 900 * 3);
 
-	// 通过内存DC复制客户区到DDB位图
-//	HDC hdcWnd = GetDC(hWnd);
-	HDC hdcWnd = GetDC(NULL);
-	HBITMAP hbmWnd = CreateCompatibleBitmap(hdcWnd, width, height);
-	HDC hdcMem = CreateCompatibleDC(hdcWnd);
-	SelectObject(hdcMem, hbmWnd);
-	BitBlt(hdcMem, 0, 0, width, height, hdcWnd, 0, 0, SRCCOPY);
-
-	// 把窗口DDB转为DIB
-	BITMAP bmpWnd;
-	GetObject(hbmWnd, sizeof(BITMAP), &bmpWnd);
-	BITMAPINFOHEADER bi; // 信息头
-	bi.biSize = sizeof(BITMAPINFOHEADER);
-	bi.biWidth = bmpWnd.bmWidth;
-	bi.biHeight = bmpWnd.bmHeight;
-	bi.biPlanes = 1;
-	bi.biBitCount = 32; // 按照每个像素用32bits表示转换
-	bi.biCompression = BI_RGB;
-	bi.biSizeImage = 0;
-	bi.biXPelsPerMeter = bi.biYPelsPerMeter = 0;
-	bi.biClrUsed = bi.biClrImportant = 0;
+	BITMAPINFOHEADER bi;
+	capscreen(image_buffer, bi);
+	////RGB顺序调整
+	//for (int i = 0, j = 0; j < 1600 * 900 * 4; i += 3, j += 4)
+	//{
+	//	*(image_buf + i) = *(image_buffer + j + 2);
+	//	*(image_buf + i + 1) = *(image_buffer + j + 1);
+	//	*(image_buf + i + 2) = *(image_buffer + j);
+	//}
+	size_t length = bi.biSizeImage;
 	
-	DWORD dwBmpSize = ((bmpWnd.bmWidth * bi.biBitCount + 31) / 32) * 4 * bmpWnd.bmHeight; // 每一行像素位32对齐
-	BYTE *lpbitmap = (BYTE*)malloc(dwBmpSize); // 像素位指针
-	GetDIBits(hdcMem, hbmWnd, 0, (UINT)bmpWnd.bmHeight,
-		lpbitmap,
-		(BITMAPINFO*)&bi,
-		DIB_RGB_COLORS);
 
-	DeleteDC(hdcMem);
-	DeleteObject(hbmWnd);
-	ReleaseDC(hWnd, hdcWnd);
-
-	char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+dwBmpSize); // 像素位指针
+	char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+length); // 像素位指针
 	MSG_SCREEN *msg_head = (MSG_SCREEN *)send_buf;
-	msg_head->dwBmpSize = htonl(dwBmpSize);
+	msg_head->dwBmpSize = htonl(length);
 	memcpy(&(msg_head->bi), &bi, sizeof(BITMAPINFOHEADER));
-	memcpy(send_buf + sizeof(MSG_SCREEN), lpbitmap, dwBmpSize);
+	memcpy(send_buf + sizeof(MSG_SCREEN), image_buffer, length);
 
-//	int count = send(socket, send_buf, sizeof(MSG_SCREEN)+dwBmpSize, 0);
-	memset(mess, '\0', sizeof(mess));
-	wsprintf(mess, L"width=%d height=%d size=%d %d", msg_head->bi.biWidth, msg_head->bi.biHeight,
-		msg_head->dwBmpSize, dwBmpSize);
-	HDC hdc = GetDC(hWnd);
-	TextOut(hdc, 0, 100, mess, 60);
-	ReleaseDC(hWnd, hdc);
+	int count = send(socket, send_buf, sizeof(MSG_SCREEN)+length, 0);
 
-	{
+//	savejpeg("ok.jpg", image_buf, 1600, 900, 3);
+	return;
+	/*{
 		BYTE *outdata;
 		BYTE *rawdata;
 		ULONG nSize;
-		compress2jpeg(lpbitmap, bi.biWidth, bi.biHeight, &outdata, &nSize);
+		compress2jpeg(rawbitmap, bi.biWidth, bi.biHeight, &outdata, &nSize);
 		decompress(outdata, nSize, rawdata);
 		HDC hdc = GetDC(hWnd);
 		StretchDIBits(hdc,
@@ -231,64 +248,110 @@ void GetScreen(HWND hWnd, SOCKET socket)
 			DIB_RGB_COLORS,
 			SRCCOPY);
 		ReleaseDC(hWnd, hdc);
-	}
+	}*/
 }
 
-BOOL compress2jpeg(BYTE raw[], JDIMENSION width, JDIMENSION height, BYTE **outdata, ULONG *nSize)
+int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 {
-	struct jpeg_compress_struct cinfo;
-	struct jpeg_error_mgr jerr;
+	UINT num = 0;                     // number of image encoders   
+	UINT size = 0;                   // size of the image encoder array in bytes   
+	ImageCodecInfo *pImageCodecInfo = NULL;
+	GetImageEncodersSize(&num, &size);
+	if (size == 0)
+		return -1;     //   Failure   
 
-	cinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_compress(&cinfo);
+	pImageCodecInfo = (ImageCodecInfo*)(malloc(size));
+	if (pImageCodecInfo == NULL)
+		return -1;     //   Failure   
 
-	*outdata = (BYTE*)malloc(4000000); // 用于缓存
-	jpeg_mem_dest(&cinfo, outdata, nSize);
-
-	cinfo.image_width = width;
-	cinfo.image_height = height;
-	cinfo.input_components = 3;
-	cinfo.in_color_space = JCS_RGB;
-
-	jpeg_set_defaults(&cinfo);
-	jpeg_set_quality(&cinfo, 80, true);
-
-	jpeg_start_compress(&cinfo, true);
-	JSAMPROW row_pointer[1];	// 一行位图
-	int row_stride;				// 每一行的字节数
-
-	row_stride = cinfo.image_width * 3;	// 如果不是索引图,此处需要乘以3
-
-	// 对每一行进行压缩
-	while (cinfo.next_scanline < cinfo.image_height) {
-		row_pointer[0] = &raw[cinfo.next_scanline * row_stride];
-		jpeg_write_scanlines(&cinfo, row_pointer, 1);
-	}
-
-	jpeg_finish_compress(&cinfo);
-	jpeg_destroy_compress(&cinfo);
-
-	return true;
-}
-
-void decompress(BYTE raw[], int nSize, BYTE *&data)
-{
-	struct jpeg_decompress_struct cinfo;
-	struct jpeg_error_mgr jerr;
-	JSAMPROW row_pointer[1];
-
-	cinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_decompress(&cinfo);
-	jpeg_mem_src(&cinfo, raw, nSize);
-	jpeg_read_header(&cinfo, TRUE);
-	data = (BYTE*)malloc(sizeof(BYTE)*cinfo.image_width*cinfo.image_height*cinfo.num_components);
-	jpeg_start_decompress(&cinfo);
-
-	while (cinfo.output_scanline < cinfo.output_height)
+	GetImageEncoders(num, size, pImageCodecInfo);
+	for (UINT j = 0; j < num; ++j)
 	{
-		row_pointer[0] = &data[cinfo.output_scanline*cinfo.image_width*cinfo.num_components];
-		jpeg_read_scanlines(&cinfo, row_pointer, 1);
+		if (wcscmp(pImageCodecInfo[j].MimeType, format) == 0)
+		{
+			*pClsid = pImageCodecInfo[j].Clsid;
+			free(pImageCodecInfo);
+			return j;     //   Success   
+		}
 	}
-	jpeg_finish_decompress(&cinfo);
-	jpeg_destroy_decompress(&cinfo);
+	free(pImageCodecInfo);
+	return -1;     //   Failure   
 }
+
+
+/****************BMP转JPG*********用法示例**************************
+
+Bitmap newbitmap(L"d:\\d.bmp");//加载BMP
+const unsigned short *pFileName=L"d:\\new.jpg";//保存路径
+SaveFile(&newbitmap,pFileName );
+
+************************************************************/
+
+void SaveFile(Bitmap* pImage, const wchar_t* pFileName)//
+{
+	EncoderParameters encoderParameters;
+	CLSID jpgClsid;
+	GetEncoderClsid(L"image/jpeg", &jpgClsid);
+	encoderParameters.Count = 1;
+	encoderParameters.Parameter[0].Guid = EncoderQuality;
+	encoderParameters.Parameter[0].Type = EncoderParameterValueTypeLong;
+	encoderParameters.Parameter[0].NumberOfValues = 1;
+
+	// Save the image as a JPEG with quality level 100.
+	ULONG             quality;
+	quality = 100;
+	encoderParameters.Parameter[0].Value = &quality;
+	Status status = pImage->Save(pFileName, &jpgClsid, &encoderParameters);
+	if (status != Ok)
+	{
+		wprintf(L"%d Attempt to save %s failed.\n", status, pFileName);
+	}
+}
+
+
+// 将当前屏幕保存成为jpg图片       
+// 参数   xs = 图象x岽笮?   ys = 图象y轴大小,   quality = jpeg图象质量       
+void SaveCurScreenJpg(LPCWSTR   pszFileName, int   xs, int   ys, int   quality)
+{
+	HWND hwnd = ::GetDesktopWindow();
+	HDC hdc = GetWindowDC(NULL);
+	int x = GetDeviceCaps(hdc, HORZRES);
+	int y = GetDeviceCaps(hdc, VERTRES);
+	HBITMAP hbmp = ::CreateCompatibleBitmap(hdc, x, y), hold;
+	HDC hmemdc = ::CreateCompatibleDC(hdc);
+	hold = (HBITMAP)::SelectObject(hmemdc, hbmp);
+	BitBlt(hmemdc, 0, 0, x, y, hdc, 0, 0, SRCCOPY);
+	SelectObject(hmemdc, hold);
+
+	Bitmap bit(xs, ys), bit2(hbmp, NULL);
+	Graphics g(&bit);
+	g.ScaleTransform((float)xs / x, (float)ys / y);
+	g.DrawImage(&bit2, 0, 0);
+
+	CLSID                           encoderClsid;
+	EncoderParameters   encoderParameters;
+
+	encoderParameters.Count = 1;
+	encoderParameters.Parameter[0].Guid = EncoderQuality;
+	encoderParameters.Parameter[0].Type = EncoderParameterValueTypeLong;
+	encoderParameters.Parameter[0].NumberOfValues = 1;
+	encoderParameters.Parameter[0].Value = &quality;
+
+	GetEncoderClsid(L"image/jpeg", &encoderClsid);
+	bit.Save(pszFileName, &encoderClsid, &encoderParameters);
+
+	::DeleteObject(hbmp);
+	::DeleteObject(hmemdc);
+	return;
+}
+
+/*
+HBITMAP ReturnHBITMAP(CString FileName)//FileName可能是bmp、dib、png、gif、jpeg/jpg、tiff、emf等文件的文件名 
+{
+	Bitmap	tempBmp(FileName.AllocSysString());
+	Color	backColor;
+	HBITMAP	HBitmap;
+	tempBmp.GetHBITMAP(backColor, &HBitmap);
+	return	HBitmap;
+}
+*/
