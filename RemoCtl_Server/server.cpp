@@ -7,7 +7,6 @@
 
 extern HINSTANCE hInst;		// 当前实例
 extern HWND hwnd;
-SOCKET Listen, Socket;
 int gPort = 5050;
 using namespace Gdiplus;
 struct _Remote_MSG
@@ -17,7 +16,7 @@ struct _Remote_MSG
 typedef struct _Remote_MSG Remote_MSG;
 
 DWORD WINAPI ClientThread(LPVOID lpParam);
-void GetScreen(HWND hWnd, SOCKET socket);
+DWORD WINAPI send_screen(LPVOID lpParam);
 void capscreen(BYTE *image_buffer);
 
 //LoadWinsock用来装载和初始化Winsock，绑定本地地址，创建监听socket，等候客户端连接
@@ -33,6 +32,7 @@ DWORD WINAPI LoadWinsock(LPVOID lpParam)
 	struct	sockaddr_in	local, client;
 
 	WSADATA				wsd;
+	SOCKET Listen, Socket;
 
 	if (WSAStartup(0x202, &wsd) != 0)
 	{
@@ -79,7 +79,7 @@ DWORD WINAPI LoadWinsock(LPVOID lpParam)
 			memset(szClientIP, '\0', sizeof(szClientIP));
 			wsprintf(szClientIP, L"%s", inet_ntoa(client.sin_addr));
 			// 为每一个客户端创建一个线程
-			hThread = CreateThread(NULL, 0, ClientThread, NULL, 0, &dwThreadId);
+			hThread = CreateThread(NULL, 0, ClientThread, &Socket, 0, &dwThreadId);
 			if (hThread)
 			{
 				//关闭线程句柄
@@ -100,17 +100,19 @@ DWORD WINAPI LoadWinsock(LPVOID lpParam)
 //如果这个消息以"WM_"开头，那么它就根据消息类型，在服务器端执行该消息
 DWORD WINAPI ClientThread(LPVOID lpParam)
 {
-	SOCKET	MySocket = Socket;
+	SOCKET	MySocket = *(SOCKET *)lpParam;
 	FD_SET	SocketSet;
 	struct	timeval	timeout;
 	char	szMessage[2049];
-	DWORD	iRecv;
+	int		iRecv;
 	DWORD	iRet;
 	Remote_MSG* msg;
+	DWORD	dwThreadId;
 	// TCHAR	mess[128];
 	//	MSG		amsg;
 	// HDC		hdc;
 
+	CreateThread(NULL, 0, send_screen, &MySocket, 0, &dwThreadId);
 	// 设置超时值
 	timeout.tv_sec = 0;		// 秒
 	timeout.tv_usec = 0;	// 微秒
@@ -130,11 +132,11 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 			memset(szMessage, '\0', sizeof(szMessage));
 			// 阻塞方式调用recv()
 			iRecv = recv(MySocket, szMessage, 2048, 0);
-			szMessage[iRecv] = '\0';
+			if (iRecv == -1)
+				break;
 			msg = (Remote_MSG*)szMessage;
 			
 			SetCursorPos(LOWORD(msg->lParam), HIWORD(msg->lParam));
-			GetScreen(hwnd, MySocket);
 			//		MessageBox(hwnd, mess, L"MESSAGE", MB_OK);
 			//amsg.hwnd = hwnd;
 			//amsg.lParam = msg->lParam;
@@ -204,42 +206,30 @@ typedef struct _MSG_SCREEN
 }MSG_SCREEN;
 
 void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len);
-void GetScreen(HWND hWnd, SOCKET socket)
-{
-	if (hWnd == NULL) return;
-	
+
+DWORD WINAPI send_screen(LPVOID lpParam)
+{	
+	SOCKET socket = *(SOCKET *)lpParam;
 	GdiplusStartupInput gdiplusStartupInput;
 	ULONG_PTR pGdiToken;
 	GdiplusStartup(&pGdiToken, &gdiplusStartupInput, NULL);//初始化GDI+
-	char *pbuf;
-	int len;
-	SaveCurScreenJpg(1366, 768, 100, &pbuf, &len);
+
+	while (true)
+	{
+		char *pbuf;
+		int len;
+		SaveCurScreenJpg(1366, 768, 100, &pbuf, &len);
+
+		char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+len); // 像素位指针
+		MSG_SCREEN *msg_head = (MSG_SCREEN *)send_buf;
+		msg_head->dwBmpSize = htonl(len);
+		memcpy(send_buf + sizeof(MSG_SCREEN), pbuf, len);
+
+		int count = send(socket, send_buf, sizeof(MSG_SCREEN)+len, 0);
+		Sleep(10);
+	}
 	GdiplusShutdown(pGdiToken);
-
-	char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+len); // 像素位指针
-	MSG_SCREEN *msg_head = (MSG_SCREEN *)send_buf;
-	msg_head->dwBmpSize = htonl(len);
-	memcpy(send_buf + sizeof(MSG_SCREEN), pbuf, len);
-
-	int count = send(socket, send_buf, sizeof(MSG_SCREEN)+len, 0);
-
-	return;
-	/*{
-		BYTE *outdata;
-		BYTE *rawdata;
-		ULONG nSize;
-		compress2jpeg(rawbitmap, bi.biWidth, bi.biHeight, &outdata, &nSize);
-		decompress(outdata, nSize, rawdata);
-		HDC hdc = GetDC(hWnd);
-		StretchDIBits(hdc,
-			0, 0, bi.biWidth, bi.biHeight,
-			0, 0, bi.biWidth, bi.biHeight,
-			rawdata,
-			(BITMAPINFO*)&(bi),
-			DIB_RGB_COLORS,
-			SRCCOPY);
-		ReleaseDC(hWnd, hdc);
-	}*/
+	return 0;
 }
 
 int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)

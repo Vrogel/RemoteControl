@@ -16,7 +16,7 @@ HINSTANCE hInst;								// 当前实例
 TCHAR szTitle[MAX_LOADSTRING];					// 标题栏文本
 TCHAR szWindowClass[MAX_LOADSTRING];			// 主窗口类名
 
-
+HWND hwnd;
 SOCKET sClient;
 struct sockaddr_in server;
 int port = 5050;
@@ -112,20 +112,18 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-   HWND hWnd;
-
    hInst = hInstance; // 将实例句柄存储在全局变量中
 
-   hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+   hwnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
       CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, NULL, NULL, hInstance, NULL);
 
-   if (!hWnd)
+   if (!hwnd)
    {
       return FALSE;
    }
 
-   ShowWindow(hWnd, nCmdShow);
-   UpdateWindow(hWnd);
+   ShowWindow(hwnd, nCmdShow);
+   UpdateWindow(hwnd);
 
    return TRUE;
 }
@@ -157,73 +155,130 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 	return -1;     //   Failure   
 }
 
+class StopWatch
+{
+private:
+	int _freq;
+	LARGE_INTEGER _begin;
+	LARGE_INTEGER _end;
+
+public:
+	float costTime;            //用时,*1000000 = 微秒, 1秒=1000000
+
+	StopWatch(void)
+	{
+		LARGE_INTEGER tmp;
+		QueryPerformanceFrequency(&tmp);
+		_freq = tmp.QuadPart;
+		costTime = 0;
+	}
+
+	~StopWatch(void)
+	{
+
+	}
+
+	void Start()            // 开始计时
+	{
+		QueryPerformanceCounter(&_begin);
+	}
+
+	void End()                // 结束计时
+	{
+		QueryPerformanceCounter(&_end);
+		costTime = ((_end.QuadPart - _begin.QuadPart)*1.0f / _freq);
+	}
+
+	void Reset()            // 计时清0
+	{
+		costTime = 0;
+	}
+};
 
 typedef struct _MSG_SCREEN
 {
 	DWORD dwBmpSize;
 }MSG_SCREEN;
 
-void Refresh_Screen(HWND hWnd)
+BOOL jpg2bmp(BYTE *jpg, size_t len, BYTE **bmp,  HWND hWnd)
 {
-	TCHAR	mess[128];
-	char *recv_buf = (char*)malloc(10240000);
+	LARGE_INTEGER startCount;
+	LARGE_INTEGER endCount;
+	LARGE_INTEGER freq;
+
+	QueryPerformanceFrequency(&freq);
+	QueryPerformanceCounter(&startCount);
+
+
+
+
+	HGLOBAL mem_jpg = GlobalAlloc(GPTR, len);
+	memcpy(mem_jpg, jpg, len);
+
+	IStream *stm_jpg = NULL;
+	CreateStreamOnHGlobal(mem_jpg, FALSE, &stm_jpg);
+	Image *im_jpg = Image::FromStream(stm_jpg, FALSE);
+
+	CLSID clsid_bmp;
+	GetEncoderClsid(L"image/bmp", &clsid_bmp);//取得BMP编码
 	
-	int count = recv(sClient, recv_buf, 10240000, 0);
+	HGLOBAL mem_bmp = GlobalAlloc(GMEM_MOVEABLE, 0);
+	IStream *stm_bmp = NULL;
+	CreateStreamOnHGlobal(mem_bmp, FALSE, &stm_bmp);
+	im_jpg->Save(stm_bmp, &clsid_bmp);
 
-	MSG_SCREEN *msg_screen = (MSG_SCREEN*)recv_buf;
-	int len = ntohl(msg_screen->dwBmpSize);
+	int Len = GlobalSize(mem_bmp);//转换后BMP文件大小
+	BYTE *pbyBmp = (BYTE *)GlobalLock(mem_bmp);
+	*bmp = new BYTE[Len];
+	memcpy(*bmp, pbyBmp, Len);
+	GlobalUnlock(mem_bmp);
 
-	GdiplusStartupInput gdiplusStartupInput;
-	ULONG_PTR pGdiToken;
-	GdiplusStartup(&pGdiToken, &gdiplusStartupInput, NULL);//初始化GDI+
-	
-
-	HGLOBAL hMemJpg = GlobalAlloc(GPTR, len);
-	BYTE *pbyjpg = (BYTE *)GlobalLock(hMemJpg);
-	memcpy(pbyjpg, recv_buf + sizeof(MSG_SCREEN), len);
-	GlobalUnlock(hMemJpg);
-
-	IStream *pStmJpg = NULL;
-	CreateStreamOnHGlobal(hMemJpg, FALSE, &pStmJpg);
-
-	Image *imImage = NULL; //从流中还原图片
-	imImage = Image::FromStream(pStmJpg, FALSE);
-
-	CLSID clImageClsid;
-	GetEncoderClsid(L"image/bmp", &clImageClsid);//取得BMP编码
+	stm_jpg->Release();
+	stm_bmp->Release();
+	GlobalFree(mem_jpg);
+	GlobalFree(mem_bmp);
 
 
-	HGLOBAL hMemBmp = GlobalAlloc(GMEM_MOVEABLE, 0);
-	IStream *pStmBmp = NULL;
-	CreateStreamOnHGlobal(hMemBmp, FALSE, &pStmBmp);
-	imImage->Save(pStmBmp, &clImageClsid);
 
-	int Len = GlobalSize(hMemBmp);//转换后BMP文件大小
-	BYTE *pbyBmp = (BYTE *)GlobalLock(hMemBmp);//此数据就可直接调用API画出来了
-	
-	char *pBuf = new char[Len];
-	memcpy(pBuf, pbyBmp, Len);
-
-	GlobalUnlock(hMemBmp);
-
-	pStmBmp->Release();
-	GlobalFree(hMemBmp);
-
-	GdiplusShutdown(pGdiToken);
-
-	BITMAPINFOHEADER *bmpheader = (BITMAPINFOHEADER*)(pBuf + sizeof(BITMAPFILEHEADER));
-
-	HDC hdc = GetDC(hWnd);
-	StretchDIBits(hdc,
-		0, 0, bmpheader->biWidth, bmpheader->biHeight,
-		0, 0, bmpheader->biWidth, bmpheader->biHeight,
-		pBuf + sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER),
-		(BITMAPINFO*)bmpheader,
-		DIB_RGB_COLORS,
-		SRCCOPY);
+	QueryPerformanceCounter(&endCount);
+	int elapsed = (int)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
+	TCHAR m[100];
+	HDC hdc = GetDC(NULL);
+	wsprintf(m, L"%d ms              ", elapsed);
+	TextOut(hdc, 0, 0, m, 12);
 	ReleaseDC(hWnd, hdc);
+	return true;
+}
 
-	free(recv_buf);
+DWORD WINAPI Refresh_Screen(LPVOID lpParam)
+{
+	BYTE *recv_buf = new BYTE[10240000];
+	
+	while (true)
+	{
+		if (recv(sClient, (char*)recv_buf, 10240000, 0) <= 0)
+			continue;
+		MSG_SCREEN *msg_screen = (MSG_SCREEN*)recv_buf;
+		size_t len = ntohl(msg_screen->dwBmpSize);
+
+		BYTE *bmp;
+		jpg2bmp(recv_buf + sizeof(MSG_SCREEN), len, &bmp, hwnd);
+
+		BITMAPINFOHEADER *bmpheader = (BITMAPINFOHEADER*)(bmp + sizeof(BITMAPFILEHEADER));
+
+		HDC hdc = GetDC(hwnd);
+		StretchDIBits(hdc,
+			0, 0, bmpheader->biWidth, bmpheader->biHeight,
+			0, 0, bmpheader->biWidth, bmpheader->biHeight,
+			bmp + sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER),
+			(BITMAPINFO*)bmpheader,
+			DIB_RGB_COLORS,
+			SRCCOPY);
+		ReleaseDC(hwnd, hdc);
+		delete[] bmp;
+	}
+	delete [] recv_buf;
+	return 0;
 }
 
 //
@@ -238,17 +293,22 @@ void Refresh_Screen(HWND hWnd)
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	int wmId, wmEvent;
+	int			wmId, wmEvent;
 	PAINTSTRUCT ps;
-	HDC hdc;
-	int x, y; 
+	HDC			hdc;
+	int			x, y; 
 	Remote_MSG	send_msg;
+	GdiplusStartupInput gdiplusStartupInput;
+	static ULONG_PTR	pGdiToken;
+	static DWORD		dwThreadId;
 
 	switch (message)
 	{
 	case WM_CREATE:
-	//	LoadWinsock(hWnd, "7.82.237.31");
-		LoadWinsock(hWnd, "127.0.0.1");
+		GdiplusStartup(&pGdiToken, &gdiplusStartupInput, NULL);//初始化GDI+
+		LoadWinsock(hWnd, "7.82.237.31");
+	//	LoadWinsock(hWnd, "127.0.0.1");
+		CreateThread(NULL, 0, Refresh_Screen, NULL, 0, &dwThreadId);
 		break;
 	case WM_COMMAND:
 		wmId    = LOWORD(wParam);
@@ -284,10 +344,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		send_msg.wParam = wParam;
 		send_msg.message = message;
 		send(sClient, (char*)&send_msg, sizeof(send_msg), 0);
-		Refresh_Screen(hWnd);
 		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);
+		GdiplusShutdown(pGdiToken);
 		break;
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
