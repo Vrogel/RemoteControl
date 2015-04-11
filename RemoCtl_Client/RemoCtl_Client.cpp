@@ -93,7 +93,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hIcon			= LoadIcon(hInstance, MAKEINTRESOURCE(IDI_REMOCTL_CLIENT));
 	wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
 	wcex.hbrBackground	= (HBRUSH)(COLOR_WINDOW+1);
-	wcex.lpszMenuName	= MAKEINTRESOURCE(IDC_REMOCTL_CLIENT);
+	wcex.lpszMenuName = NULL;// MAKEINTRESOURCE(IDC_REMOCTL_CLIENT);
 	wcex.lpszClassName	= szWindowClass;
 	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
@@ -114,9 +114,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    hInst = hInstance; // 将实例句柄存储在全局变量中
 
-   hwnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, NULL, NULL, hInstance, NULL);
-
+//   hwnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+//     CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, NULL, NULL, hInstance, NULL);
+   hwnd = CreateWindow(szWindowClass, szTitle, WS_POPUP, 0, 0, 
+	   GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN),
+	   NULL, NULL, hInstance, NULL);
    if (!hwnd)
    {
       return FALSE;

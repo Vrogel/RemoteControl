@@ -373,8 +373,6 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	int t_begin, t_screen, t_copy, t_send;
 	FILE *fp = fopen("jpg.log", "a+");
 
-	QueryPerformanceCounter(&endCount);
-	t_begin = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
 	HWND hwnd = ::GetDesktopWindow();
 	HDC hdc = GetWindowDC(NULL);
@@ -383,6 +381,10 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	HBITMAP hbmp = ::CreateCompatibleBitmap(hdc, x, y), hold;
 	HDC hmemdc = ::CreateCompatibleDC(hdc);
 	hold = (HBITMAP)::SelectObject(hmemdc, hbmp);
+
+	QueryPerformanceCounter(&endCount);
+	t_begin = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
+
 	BitBlt(hmemdc, 0, 0, x, y, hdc, 0, 0, SRCCOPY);
 	SelectObject(hmemdc, hold);
 
@@ -435,7 +437,7 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	QueryPerformanceCounter(&endCount);
 	t_send = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
-	sprintf(m, " %d %d %d %d \t\t%d\n", t_begin, t_screen, t_copy, t_send, len);
+	sprintf(m, " %d %d %d %d \t\t%d\n", t_begin, t_screen, t_copy, t_send, *len);
 	fwrite(m, strlen(m), 1, fp);
 	fclose(fp);
 	::DeleteObject(hbmp);
