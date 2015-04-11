@@ -296,7 +296,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	int			wmId, wmEvent;
 	PAINTSTRUCT ps;
 	HDC			hdc;
-	int			x, y; 
 	Remote_MSG	send_msg;
 	GdiplusStartupInput gdiplusStartupInput;
 	static ULONG_PTR	pGdiToken;
@@ -331,14 +330,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// TODO:  在此添加任意绘图代码...
 		EndPaint(hWnd, &ps);
 		break;
-//	case WM_MOUSEMOVE:
-//	case WM_LBUTTONDBLCLK:
+	case WM_MOUSEMOVE:
+	case WM_LBUTTONDBLCLK:
 	case WM_LBUTTONDOWN:
-//	case WM_LBUTTONUP:
-//	case WM_RBUTTONDOWN:
-//	case WM_RBUTTONUP:
-		x = LOWORD(lParam);
-		y = HIWORD(lParam);
+	case WM_LBUTTONUP:
+	case WM_RBUTTONDOWN:
+	case WM_RBUTTONUP:
+	case WM_MOUSEWHEEL:
 		send_msg.hWnd = hWnd;
 		send_msg.lParam = lParam;
 		send_msg.wParam = wParam;

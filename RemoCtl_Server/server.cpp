@@ -136,15 +136,47 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 				break;
 			msg = (Remote_MSG*)szMessage;
 			
+			INPUT inputs;
 			SetCursorPos(LOWORD(msg->lParam), HIWORD(msg->lParam));
-			//		MessageBox(hwnd, mess, L"MESSAGE", MB_OK);
-			//amsg.hwnd = hwnd;
-			//amsg.lParam = msg->lParam;
-			//amsg.wParam = msg->wParam;
-			//amsg.message = msg->message;
-			//amsg.time = 0;
-			//amsg.pt = { 200, 200 };
-			//DispatchMessage(&amsg);
+			switch (msg->message)
+			{
+			case WM_MOUSEWHEEL:
+				mouse_event(MOUSEEVENTF_WHEEL, 0, 0, 0, 0);
+				break;
+			case WM_MOUSEMOVE:
+			//	mouse_event(MOUSEEVENTF_MOVE, 
+			//		LOWORD(msg->lParam), HIWORD(msg->lParam), 0, 0);
+				break;
+			case WM_LBUTTONDOWN:
+				inputs.type = INPUT_MOUSE;
+				inputs.mi.dx = inputs.mi.dx = 0;
+				inputs.mi.mouseData = inputs.mi.time = 0;
+				inputs.mi.dwExtraInfo = GetMessageExtraInfo();
+				inputs.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+				SendInput(1, &inputs, sizeof(INPUT));
+			//	mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+				break;
+			case WM_LBUTTONUP:
+				mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+				break;
+			case WM_LBUTTONDBLCLK:
+				mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+				mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+				break;
+			case WM_RBUTTONDOWN:
+				mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0);
+				break;
+			case WM_RBUTTONUP:
+				mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
+				break;
+			case WM_RBUTTONDBLCLK:
+				mouse_event(MOUSEEVENTF_RIGHTDOWN | MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
+				mouse_event(MOUSEEVENTF_RIGHTDOWN | MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
+				break;
+			default:
+				break;
+			}
+		//	PostMessage(hwnd, msg->message, msg->wParam, msg->lParam);
 		}
 	}
 	closesocket(MySocket);
@@ -259,37 +291,6 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 	return -1;     //   Failure   
 }
 
-
-/****************BMP转JPG*********用法示例**************************
-
-Bitmap newbitmap(L"d:\\d.bmp");//加载BMP
-const unsigned short *pFileName=L"d:\\new.jpg";//保存路径
-SaveFile(&newbitmap,pFileName );
-
-************************************************************/
-
-void SaveFile(Bitmap* pImage, const wchar_t* pFileName)//
-{
-	EncoderParameters encoderParameters;
-	CLSID jpgClsid;
-	GetEncoderClsid(L"image/jpeg", &jpgClsid);
-	encoderParameters.Count = 1;
-	encoderParameters.Parameter[0].Guid = EncoderQuality;
-	encoderParameters.Parameter[0].Type = EncoderParameterValueTypeLong;
-	encoderParameters.Parameter[0].NumberOfValues = 1;
-
-	// Save the image as a JPEG with quality level 100.
-	ULONG             quality;
-	quality = 100;
-	encoderParameters.Parameter[0].Value = &quality;
-	Status status = pImage->Save(pFileName, &jpgClsid, &encoderParameters);
-	if (status != Ok)
-	{
-		wprintf(L"%d Attempt to save %s failed.\n", status, pFileName);
-	}
-}
-
-
 // 将当前屏幕保存成为jpg图片       
 // 参数xs图象x轴大小 ys图象y轴大小 quality图象质量       
 void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
@@ -345,14 +346,3 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	::DeleteObject(hmemdc);
 	return;
 }
-
-/*
-HBITMAP ReturnHBITMAP(CString FileName)//FileName可能是bmp、dib、png、gif、jpeg/jpg、tiff、emf等文件的文件名 
-{
-	Bitmap	tempBmp(FileName.AllocSysString());
-	Color	backColor;
-	HBITMAP	HBitmap;
-	tempBmp.GetHBITMAP(backColor, &HBitmap);
-	return	HBitmap;
-}
-*/
