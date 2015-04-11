@@ -239,6 +239,48 @@ typedef struct _MSG_SCREEN
 
 void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len);
 
+
+class StopWatch
+{
+private:
+	int _freq;
+	LARGE_INTEGER _begin;
+	LARGE_INTEGER _end;
+
+public:
+	float costTime;            //用时,*1000000 = 微秒, 1秒=1000000
+
+	StopWatch(void)
+	{
+		LARGE_INTEGER tmp;
+		QueryPerformanceFrequency(&tmp);
+		_freq = tmp.QuadPart;
+		costTime = 0;
+	}
+
+	~StopWatch(void)
+	{
+
+	}
+
+	void Start()            // 开始计时
+	{
+		QueryPerformanceCounter(&_begin);
+	}
+
+	void End()                // 结束计时
+	{
+		QueryPerformanceCounter(&_end);
+		costTime = ((_end.QuadPart - _begin.QuadPart)*1.0f / _freq);
+	}
+
+	void Reset()            // 计时清0
+	{
+		costTime = 0;
+	}
+};
+
+
 DWORD WINAPI send_screen(LPVOID lpParam)
 {	
 	SOCKET socket = *(SOCKET *)lpParam;
@@ -246,21 +288,46 @@ DWORD WINAPI send_screen(LPVOID lpParam)
 	ULONG_PTR pGdiToken;
 	GdiplusStartup(&pGdiToken, &gdiplusStartupInput, NULL);//初始化GDI+
 
+	LARGE_INTEGER startCount;
+	LARGE_INTEGER endCount;
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	QueryPerformanceCounter(&startCount);
+
+	char m[100];
+	int t_begin, t_screen, t_copy, t_send;
+	FILE *fp = fopen("log.log", "a+");
 	while (true)
 	{
+		QueryPerformanceCounter(&endCount);
+		t_begin = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
+
 		char *pbuf;
 		int len;
 		SaveCurScreenJpg(1366, 768, 100, &pbuf, &len);
+
+		QueryPerformanceCounter(&endCount);
+		t_screen = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
 		char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+len); // 像素位指针
 		MSG_SCREEN *msg_head = (MSG_SCREEN *)send_buf;
 		msg_head->dwBmpSize = htonl(len);
 		memcpy(send_buf + sizeof(MSG_SCREEN), pbuf, len);
 
+		QueryPerformanceCounter(&endCount);
+		t_copy = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
+		
+
 		int count = send(socket, send_buf, sizeof(MSG_SCREEN)+len, 0);
-		Sleep(10);
+
+		QueryPerformanceCounter(&endCount);
+		t_send = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
+
+		sprintf(m, " %d %d %d %d \t\t%d\n", t_begin, t_screen, t_copy, t_send, len);
+		fwrite(m, strlen(m), 1, fp);
 	}
 	GdiplusShutdown(pGdiToken);
+	fclose(fp);
 	return 0;
 }
 
@@ -295,6 +362,20 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 // 参数xs图象x轴大小 ys图象y轴大小 quality图象质量       
 void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 {
+
+	LARGE_INTEGER startCount;
+	LARGE_INTEGER endCount;
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	QueryPerformanceCounter(&startCount);
+
+	char m[100];
+	int t_begin, t_screen, t_copy, t_send;
+	FILE *fp = fopen("jpg.log", "a+");
+
+	QueryPerformanceCounter(&endCount);
+	t_begin = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
+
 	HWND hwnd = ::GetDesktopWindow();
 	HDC hdc = GetWindowDC(NULL);
 	int x = GetDeviceCaps(hdc, HORZRES);
@@ -304,6 +385,11 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	hold = (HBITMAP)::SelectObject(hmemdc, hbmp);
 	BitBlt(hmemdc, 0, 0, x, y, hdc, 0, 0, SRCCOPY);
 	SelectObject(hmemdc, hold);
+
+
+	QueryPerformanceCounter(&endCount);
+	t_screen = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
+
 
 	Bitmap bit(xs, ys), bit2(hbmp, NULL);
 	Graphics g(&bit);
@@ -320,6 +406,11 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	encoderParameters.Parameter[0].Value = &quality;
 
 	GetEncoderClsid(L"image/jpeg", &encoderClsid);
+
+
+	QueryPerformanceCounter(&endCount);
+	t_copy = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
+
 
 	{
 		HGLOBAL hMemJpg = GlobalAlloc(GMEM_MOVEABLE, 0);
@@ -341,7 +432,12 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 		GlobalFree(hMemJpg);
 	}
 
+	QueryPerformanceCounter(&endCount);
+	t_send = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
+	sprintf(m, " %d %d %d %d \t\t%d\n", t_begin, t_screen, t_copy, t_send, len);
+	fwrite(m, strlen(m), 1, fp);
+	fclose(fp);
 	::DeleteObject(hbmp);
 	::DeleteObject(hmemdc);
 	return;

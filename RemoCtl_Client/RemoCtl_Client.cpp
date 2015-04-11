@@ -202,16 +202,6 @@ typedef struct _MSG_SCREEN
 
 BOOL jpg2bmp(BYTE *jpg, size_t len, BYTE **bmp,  HWND hWnd)
 {
-	LARGE_INTEGER startCount;
-	LARGE_INTEGER endCount;
-	LARGE_INTEGER freq;
-
-	QueryPerformanceFrequency(&freq);
-	QueryPerformanceCounter(&startCount);
-
-
-
-
 	HGLOBAL mem_jpg = GlobalAlloc(GPTR, len);
 	memcpy(mem_jpg, jpg, len);
 
@@ -237,26 +227,18 @@ BOOL jpg2bmp(BYTE *jpg, size_t len, BYTE **bmp,  HWND hWnd)
 	stm_bmp->Release();
 	GlobalFree(mem_jpg);
 	GlobalFree(mem_bmp);
-
-
-
-	QueryPerformanceCounter(&endCount);
-	int elapsed = (int)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
-	TCHAR m[100];
-	HDC hdc = GetDC(NULL);
-	wsprintf(m, L"%d ms              ", elapsed);
-	TextOut(hdc, 0, 0, m, 12);
-	ReleaseDC(hWnd, hdc);
 	return true;
 }
 
 DWORD WINAPI Refresh_Screen(LPVOID lpParam)
 {
 	BYTE *recv_buf = new BYTE[10240000];
-	
+	int recv_count;
+
 	while (true)
 	{
-		if (recv(sClient, (char*)recv_buf, 10240000, 0) <= 0)
+		recv_count = recv(sClient, (char*)recv_buf, 10240000, 0);
+		if (recv_count <= 0)
 			continue;
 		MSG_SCREEN *msg_screen = (MSG_SCREEN*)recv_buf;
 		size_t len = ntohl(msg_screen->dwBmpSize);
