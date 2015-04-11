@@ -107,9 +107,9 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 	DWORD	iRecv;
 	DWORD	iRet;
 	Remote_MSG* msg;
-	TCHAR	mess[128];
+	// TCHAR	mess[128];
 	//	MSG		amsg;
-	HDC		hdc;
+	// HDC		hdc;
 
 	// 设置超时值
 	timeout.tv_sec = 0;		// 秒
@@ -204,6 +204,7 @@ typedef struct _MSG_SCREEN
 	int dwBmpSize;
 }MSG_SCREEN;
 
+void SaveCurScreenJpg(LPCWSTR pszFileName, int xs, int ys, int quality, char **pBuf, int *len);
 void GetScreen(HWND hWnd, SOCKET socket)
 {
 	if (hWnd == NULL) return;
@@ -221,15 +222,22 @@ void GetScreen(HWND hWnd, SOCKET socket)
 	//	*(image_buf + i + 2) = *(image_buffer + j);
 	//}
 	size_t length = bi.biSizeImage;
-	
 
-	char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+length); // 像素位指针
+	GdiplusStartupInput gdiplusStartupInput;
+	ULONG_PTR pGdiToken;
+	GdiplusStartup(&pGdiToken, &gdiplusStartupInput, NULL);//初始化GDI+
+	char *pbuf;
+	int len;
+	SaveCurScreenJpg(L"save.jpg", 1366, 768, 100, &pbuf, &len);
+	GdiplusShutdown(pGdiToken);
+
+	char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+len); // 像素位指针
 	MSG_SCREEN *msg_head = (MSG_SCREEN *)send_buf;
-	msg_head->dwBmpSize = htonl(length);
+	msg_head->dwBmpSize = htonl(len);
 	memcpy(&(msg_head->bi), &bi, sizeof(BITMAPINFOHEADER));
-	memcpy(send_buf + sizeof(MSG_SCREEN), image_buffer, length);
+	memcpy(send_buf + sizeof(MSG_SCREEN), pbuf, len);
 
-	int count = send(socket, send_buf, sizeof(MSG_SCREEN)+length, 0);
+	int count = send(socket, send_buf, sizeof(MSG_SCREEN)+len, 0);
 
 //	savejpeg("ok.jpg", image_buf, 1600, 900, 3);
 	return;
@@ -310,8 +318,8 @@ void SaveFile(Bitmap* pImage, const wchar_t* pFileName)//
 
 
 // 将当前屏幕保存成为jpg图片       
-// 参数   xs = 图象x岽笮?   ys = 图象y轴大小,   quality = jpeg图象质量       
-void SaveCurScreenJpg(LPCWSTR   pszFileName, int   xs, int   ys, int   quality)
+// 参数xs图象x轴大小 ys图象y轴大小 quality图象质量       
+void SaveCurScreenJpg(LPCWSTR pszFileName, int xs, int ys, int quality, char **pBuf, int *len)
 {
 	HWND hwnd = ::GetDesktopWindow();
 	HDC hdc = GetWindowDC(NULL);
@@ -328,7 +336,7 @@ void SaveCurScreenJpg(LPCWSTR   pszFileName, int   xs, int   ys, int   quality)
 	g.ScaleTransform((float)xs / x, (float)ys / y);
 	g.DrawImage(&bit2, 0, 0);
 
-	CLSID                           encoderClsid;
+	CLSID               encoderClsid;
 	EncoderParameters   encoderParameters;
 
 	encoderParameters.Count = 1;
@@ -339,6 +347,27 @@ void SaveCurScreenJpg(LPCWSTR   pszFileName, int   xs, int   ys, int   quality)
 
 	GetEncoderClsid(L"image/jpeg", &encoderClsid);
 	bit.Save(pszFileName, &encoderClsid, &encoderParameters);
+
+	{
+		HGLOBAL hMemJpg = GlobalAlloc(GMEM_MOVEABLE, 0);
+
+		IStream *pStmImage = NULL;
+		CreateStreamOnHGlobal(hMemJpg, FALSE, &pStmImage);
+		bit.Save(pStmImage, &encoderClsid);
+
+		LARGE_INTEGER liBegin = { 0 };
+		pStmImage->Seek(liBegin, STREAM_SEEK_SET, NULL);
+		BYTE *pbyjpg = (BYTE *)GlobalLock(hMemJpg);//这里的pbyjpg就是转换后的JPG数据可直接通过网络发送
+
+		*len = GlobalSize(hMemJpg);//这就是转为JPG后文件的大小了
+
+		*pBuf = new char[*len];
+		memcpy(*pBuf, pbyjpg, *len);//可以保存此数据,任你操作哦
+
+		GlobalUnlock(hMemJpg);
+		GlobalFree(hMemJpg);
+	}
+
 
 	::DeleteObject(hbmp);
 	::DeleteObject(hmemdc);

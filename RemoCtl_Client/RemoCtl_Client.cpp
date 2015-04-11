@@ -4,8 +4,11 @@
 #include "RemoCtl_Client.h"
 #include <WinSock2.h>
 #include <stdio.h>
+#include <GdiPlus.h>
 #pragma comment(lib,"ws2_32.lib")
+#pragma comment(lib,"gdiPlus.lib")
 
+using namespace Gdiplus;
 #define MAX_LOADSTRING 100
 
 // 全局变量: 
@@ -127,6 +130,33 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    return TRUE;
 }
 
+int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
+{
+	UINT num = 0;                     // number of image encoders   
+	UINT size = 0;                   // size of the image encoder array in bytes   
+	ImageCodecInfo *pImageCodecInfo = NULL;
+	GetImageEncodersSize(&num, &size);
+	if (size == 0)
+		return -1;     //   Failure   
+
+	pImageCodecInfo = (ImageCodecInfo*)(malloc(size));
+	if (pImageCodecInfo == NULL)
+		return -1;     //   Failure   
+
+	GetImageEncoders(num, size, pImageCodecInfo);
+	for (UINT j = 0; j < num; ++j)
+	{
+		if (wcscmp(pImageCodecInfo[j].MimeType, format) == 0)
+		{
+			*pClsid = pImageCodecInfo[j].Clsid;
+			free(pImageCodecInfo);
+			return j;     //   Success   
+		}
+	}
+	free(pImageCodecInfo);
+	return -1;     //   Failure   
+}
+
 
 typedef struct _MSG_SCREEN
 {
@@ -142,13 +172,61 @@ void Refresh_Screen(HWND hWnd)
 	int count = recv(sClient, recv_buf, 10240000, 0);
 
 	MSG_SCREEN *msg_screen = (MSG_SCREEN*)recv_buf;
+	int len = ntohl(msg_screen->dwBmpSize);
+
+	GdiplusStartupInput gdiplusStartupInput;
+	ULONG_PTR pGdiToken;
+	GdiplusStartup(&pGdiToken, &gdiplusStartupInput, NULL);//初始化GDI+
 	
+
+	HGLOBAL hMemJpg = GlobalAlloc(GPTR, len);
+	BYTE *pbyjpg = (BYTE *)GlobalLock(hMemJpg);
+	memcpy(pbyjpg, recv_buf + sizeof(MSG_SCREEN), len);
+	GlobalUnlock(hMemJpg);
+
+	IStream *pStmJpg = NULL;
+	CreateStreamOnHGlobal(hMemJpg, FALSE, &pStmJpg);
+
+	Image *imImage = NULL; //从流中还原图片
+	imImage = Image::FromStream(pStmJpg, FALSE);
+
+//	USES_CONVERSION;
+	CLSID clImageClsid;
+	GetEncoderClsid(L"image/bmp", &clImageClsid);//取得BMP编码
+	int ret = imImage->Save(L"3.bmp", &clImageClsid);
+
+	//可直接保存在流中,任你操作了哦
+
+	HGLOBAL hMemBmp = GlobalAlloc(GMEM_MOVEABLE, 0);
+	IStream *pStmBmp = NULL;
+	CreateStreamOnHGlobal(hMemBmp, FALSE, &pStmBmp);
+	imImage->Save(pStmBmp, &clImageClsid);
+
+	int Len = GlobalSize(hMemBmp);//转换后BMP文件大小
+	BYTE *pbyBmp = (BYTE *)GlobalLock(hMemBmp);//此数据就可直接调用API画出来了
 	
+	char *pBuf = new char[Len];
+	memcpy(pBuf, pbyBmp, Len); //可以保存此数据,任你操作哦
+
+	GlobalUnlock(hMemBmp);
+
+	pStmBmp->Release();
+	GlobalFree(hMemBmp);
+
+	GdiplusShutdown(pGdiToken);
+
+	FILE *fp = fopen("recv.jpg", "wb");
+	fwrite(recv_buf + sizeof(MSG_SCREEN), ntohl(msg_screen->dwBmpSize), 1, fp);
+	fclose(fp);
+	fp = fopen("recv.bmp", "wb");
+	fwrite(pBuf, Len, 1, fp);
+	fclose(fp);
+
 	HDC hdc = GetDC(hWnd);
 	StretchDIBits(hdc,
 		0, 0, msg_screen->bi.biWidth, msg_screen->bi.biHeight,
 		0, 0, msg_screen->bi.biWidth, msg_screen->bi.biHeight,
-		recv_buf + sizeof(MSG_SCREEN),
+		pBuf + sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER),
 		(BITMAPINFO*)&(msg_screen->bi),
 		DIB_RGB_COLORS,
 		SRCCOPY);
@@ -157,9 +235,7 @@ void Refresh_Screen(HWND hWnd)
 	memset(mess, '\0', sizeof(mess));
 	wsprintf(mess, L"width=%d height=%d size=%d",
 		msg_screen->bi.biWidth, msg_screen->bi.biHeight, ntohl(msg_screen->dwBmpSize));
-	hdc = GetDC(hWnd);
-	TextOut(hdc, 0, 100, mess, 60);
-	ReleaseDC(hWnd, hdc);
+	
 	free(recv_buf);
 }
 
@@ -208,7 +284,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// TODO:  在此添加任意绘图代码...
 		EndPaint(hWnd, &ps);
 		break;
-	case WM_MOUSEMOVE:
+//	case WM_MOUSEMOVE:
 //	case WM_LBUTTONDBLCLK:
 	case WM_LBUTTONDOWN:
 //	case WM_LBUTTONUP:
