@@ -200,46 +200,29 @@ void capscreen(BYTE *image_buffer, BITMAPINFOHEADER &bi)
 
 typedef struct _MSG_SCREEN
 {
-	BITMAPINFOHEADER bi;
 	int dwBmpSize;
 }MSG_SCREEN;
 
-void SaveCurScreenJpg(LPCWSTR pszFileName, int xs, int ys, int quality, char **pBuf, int *len);
+void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len);
 void GetScreen(HWND hWnd, SOCKET socket)
 {
 	if (hWnd == NULL) return;
-
-	BYTE *image_buffer = (BYTE *)malloc(1600 * 900 * 4);
-	BYTE *image_buf = (BYTE *)malloc(1600 * 900 * 3);
-
-	BITMAPINFOHEADER bi;
-	capscreen(image_buffer, bi);
-	////RGB顺序调整
-	//for (int i = 0, j = 0; j < 1600 * 900 * 4; i += 3, j += 4)
-	//{
-	//	*(image_buf + i) = *(image_buffer + j + 2);
-	//	*(image_buf + i + 1) = *(image_buffer + j + 1);
-	//	*(image_buf + i + 2) = *(image_buffer + j);
-	//}
-	size_t length = bi.biSizeImage;
-
+	
 	GdiplusStartupInput gdiplusStartupInput;
 	ULONG_PTR pGdiToken;
 	GdiplusStartup(&pGdiToken, &gdiplusStartupInput, NULL);//初始化GDI+
 	char *pbuf;
 	int len;
-	SaveCurScreenJpg(L"save.jpg", 1366, 768, 100, &pbuf, &len);
+	SaveCurScreenJpg(1366, 768, 100, &pbuf, &len);
 	GdiplusShutdown(pGdiToken);
 
 	char *send_buf = (char*)malloc(sizeof(MSG_SCREEN)+len); // 像素位指针
 	MSG_SCREEN *msg_head = (MSG_SCREEN *)send_buf;
 	msg_head->dwBmpSize = htonl(len);
-	memcpy(&(msg_head->bi), &bi, sizeof(BITMAPINFOHEADER));
 	memcpy(send_buf + sizeof(MSG_SCREEN), pbuf, len);
 
 	int count = send(socket, send_buf, sizeof(MSG_SCREEN)+len, 0);
 
-//	savejpeg("ok.jpg", image_buf, 1600, 900, 3);
 	return;
 	/*{
 		BYTE *outdata;
@@ -319,7 +302,7 @@ void SaveFile(Bitmap* pImage, const wchar_t* pFileName)//
 
 // 将当前屏幕保存成为jpg图片       
 // 参数xs图象x轴大小 ys图象y轴大小 quality图象质量       
-void SaveCurScreenJpg(LPCWSTR pszFileName, int xs, int ys, int quality, char **pBuf, int *len)
+void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 {
 	HWND hwnd = ::GetDesktopWindow();
 	HDC hdc = GetWindowDC(NULL);
@@ -346,7 +329,6 @@ void SaveCurScreenJpg(LPCWSTR pszFileName, int xs, int ys, int quality, char **p
 	encoderParameters.Parameter[0].Value = &quality;
 
 	GetEncoderClsid(L"image/jpeg", &encoderClsid);
-	bit.Save(pszFileName, &encoderClsid, &encoderParameters);
 
 	{
 		HGLOBAL hMemJpg = GlobalAlloc(GMEM_MOVEABLE, 0);

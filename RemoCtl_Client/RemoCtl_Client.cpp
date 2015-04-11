@@ -160,7 +160,6 @@ int GetEncoderClsid(const WCHAR* format, CLSID* pClsid)
 
 typedef struct _MSG_SCREEN
 {
-	BITMAPINFOHEADER bi;
 	DWORD dwBmpSize;
 }MSG_SCREEN;
 
@@ -190,12 +189,9 @@ void Refresh_Screen(HWND hWnd)
 	Image *imImage = NULL; //从流中还原图片
 	imImage = Image::FromStream(pStmJpg, FALSE);
 
-//	USES_CONVERSION;
 	CLSID clImageClsid;
 	GetEncoderClsid(L"image/bmp", &clImageClsid);//取得BMP编码
-	int ret = imImage->Save(L"3.bmp", &clImageClsid);
 
-	//可直接保存在流中,任你操作了哦
 
 	HGLOBAL hMemBmp = GlobalAlloc(GMEM_MOVEABLE, 0);
 	IStream *pStmBmp = NULL;
@@ -206,7 +202,7 @@ void Refresh_Screen(HWND hWnd)
 	BYTE *pbyBmp = (BYTE *)GlobalLock(hMemBmp);//此数据就可直接调用API画出来了
 	
 	char *pBuf = new char[Len];
-	memcpy(pBuf, pbyBmp, Len); //可以保存此数据,任你操作哦
+	memcpy(pBuf, pbyBmp, Len);
 
 	GlobalUnlock(hMemBmp);
 
@@ -215,27 +211,18 @@ void Refresh_Screen(HWND hWnd)
 
 	GdiplusShutdown(pGdiToken);
 
-	FILE *fp = fopen("recv.jpg", "wb");
-	fwrite(recv_buf + sizeof(MSG_SCREEN), ntohl(msg_screen->dwBmpSize), 1, fp);
-	fclose(fp);
-	fp = fopen("recv.bmp", "wb");
-	fwrite(pBuf, Len, 1, fp);
-	fclose(fp);
+	BITMAPINFOHEADER *bmpheader = (BITMAPINFOHEADER*)(pBuf + sizeof(BITMAPFILEHEADER));
 
 	HDC hdc = GetDC(hWnd);
 	StretchDIBits(hdc,
-		0, 0, msg_screen->bi.biWidth, msg_screen->bi.biHeight,
-		0, 0, msg_screen->bi.biWidth, msg_screen->bi.biHeight,
+		0, 0, bmpheader->biWidth, bmpheader->biHeight,
+		0, 0, bmpheader->biWidth, bmpheader->biHeight,
 		pBuf + sizeof(BITMAPFILEHEADER)+sizeof(BITMAPINFOHEADER),
-		(BITMAPINFO*)&(msg_screen->bi),
+		(BITMAPINFO*)bmpheader,
 		DIB_RGB_COLORS,
 		SRCCOPY);
 	ReleaseDC(hWnd, hdc);
 
-	memset(mess, '\0', sizeof(mess));
-	wsprintf(mess, L"width=%d height=%d size=%d",
-		msg_screen->bi.biWidth, msg_screen->bi.biHeight, ntohl(msg_screen->dwBmpSize));
-	
 	free(recv_buf);
 }
 
