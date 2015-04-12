@@ -314,6 +314,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// TODO:  在此添加任意绘图代码...
 		EndPaint(hWnd, &ps);
 		break;
+	case WM_KEYDOWN:
+		if (wParam == VK_ESCAPE)
+			PostQuitMessage(0);
+			GdiplusShutdown(pGdiToken);
+	case WM_KEYUP:
+	case WM_SYSKEYDOWN:
+	case WM_SYSKEYUP:
 	case WM_MOUSEMOVE:
 	case WM_LBUTTONDBLCLK:
 	case WM_LBUTTONDOWN:

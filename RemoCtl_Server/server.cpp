@@ -137,19 +137,52 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 			msg = (Remote_MSG*)szMessage;
 			
 			INPUT inputs;
-			SetCursorPos(LOWORD(msg->lParam), HIWORD(msg->lParam));
+		//	SetCursorPos(LOWORD(msg->lParam), HIWORD(msg->lParam));
 			switch (msg->message)
 			{
-			case WM_MOUSEWHEEL:
-				mouse_event(MOUSEEVENTF_WHEEL, 0, 0, 0, 0);
+			case WM_KEYDOWN:
+			case WM_SYSKEYDOWN:
+				inputs.type = INPUT_KEYBOARD;
+				inputs.ki.wVk = msg->wParam;
+				inputs.ki.wScan = 0;
+				inputs.ki.time = 0;
+				inputs.ki.dwExtraInfo = GetMessageExtraInfo();
+				inputs.ki.dwFlags = 0;
+				SendInput(1, &inputs, sizeof(INPUT));
 				break;
-			case WM_MOUSEMOVE:
+			case WM_KEYUP:
+			case WM_SYSKEYUP:
+				inputs.type = INPUT_KEYBOARD;
+				inputs.ki.wVk = msg->wParam;
+				inputs.ki.wScan = 0;
+				inputs.ki.time = 0;
+				inputs.ki.dwExtraInfo = GetMessageExtraInfo();
+				inputs.ki.dwFlags = KEYEVENTF_KEYUP;
+				SendInput(1, &inputs, sizeof(INPUT));
+				break;
+			case WM_MOUSEWHEEL:
+				inputs.type = INPUT_MOUSE;
+				inputs.mi.dx = inputs.mi.dy = 0;
+				inputs.mi.mouseData = GET_WHEEL_DELTA_WPARAM(msg->wParam);;
+				inputs.mi.time = 0;
+				inputs.mi.dwExtraInfo = GetMessageExtraInfo();
+				inputs.mi.dwFlags = MOUSEEVENTF_WHEEL;
+				SendInput(1, &inputs, sizeof(INPUT));
+				break;
+			case WM_MOUSEMOVE:SetCursorPos(LOWORD(msg->lParam), HIWORD(msg->lParam));
+			//	inputs.type = INPUT_MOUSE;
+			//	inputs.mi.dx = LOWORD(msg->lParam);
+			//	inputs.mi.dy = HIWORD(msg->lParam);
+			//	inputs.mi.mouseData = inputs.mi.time = 0;
+			//	inputs.mi.dwExtraInfo = GetMessageExtraInfo();
+			//	inputs.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+			//	SendInput(1, &inputs, sizeof(INPUT));
 			//	mouse_event(MOUSEEVENTF_MOVE, 
 			//		LOWORD(msg->lParam), HIWORD(msg->lParam), 0, 0);
 				break;
 			case WM_LBUTTONDOWN:
 				inputs.type = INPUT_MOUSE;
-				inputs.mi.dx = inputs.mi.dx = 0;
+				inputs.mi.dx = inputs.mi.dy = 0;
 				inputs.mi.mouseData = inputs.mi.time = 0;
 				inputs.mi.dwExtraInfo = GetMessageExtraInfo();
 				inputs.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
@@ -157,7 +190,12 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 			//	mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
 				break;
 			case WM_LBUTTONUP:
-				mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+				inputs.type = INPUT_MOUSE;
+				inputs.mi.dx = inputs.mi.dy = 0;
+				inputs.mi.mouseData = inputs.mi.time = 0;
+				inputs.mi.dwExtraInfo = GetMessageExtraInfo();
+				inputs.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+				SendInput(1, &inputs, sizeof(INPUT));
 				break;
 			case WM_LBUTTONDBLCLK:
 				mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
