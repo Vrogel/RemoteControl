@@ -211,7 +211,7 @@ BOOL jpg2bmp(BYTE *jpg, size_t len, BYTE **bmp,  HWND hWnd)
 	CreateStreamOnHGlobal(mem_jpg, FALSE, &stm_jpg);
 	Image *im_jpg = Image::FromStream(stm_jpg, FALSE);
 
-	CLSID clsid_bmp;
+	static CLSID clsid_bmp;
 	GetEncoderClsid(L"image/bmp", &clsid_bmp);//È¡µÃBMP±àÂë
 	
 	HGLOBAL mem_bmp = GlobalAlloc(GMEM_MOVEABLE, 0);
@@ -316,8 +316,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE)
+		{
 			PostQuitMessage(0);
 			GdiplusShutdown(pGdiToken);
+		}
 	case WM_KEYUP:
 	case WM_SYSKEYDOWN:
 	case WM_SYSKEYUP:
