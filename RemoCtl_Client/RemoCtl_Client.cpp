@@ -289,8 +289,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_CREATE:
 		GdiplusStartup(&pGdiToken, &gdiplusStartupInput, NULL);//≥ı ºªØGDI+
-		LoadWinsock(hWnd, "7.82.237.31");
+	//	LoadWinsock(hWnd, "7.82.237.31");
 	//	LoadWinsock(hWnd, "127.0.0.1");
+		LoadWinsock(hWnd, "218.192.170.50");
 		CreateThread(NULL, 0, Refresh_Screen, NULL, 0, &dwThreadId);
 		break;
 	case WM_COMMAND:
@@ -317,8 +318,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE)
 		{
-			PostQuitMessage(0);
-			GdiplusShutdown(pGdiToken);
+			DestroyWindow(hWnd);
 		}
 	case WM_KEYUP:
 	case WM_SYSKEYDOWN:

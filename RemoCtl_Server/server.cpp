@@ -141,7 +141,6 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 			switch (msg->message)
 			{
 			case WM_KEYDOWN:
-			case WM_SYSKEYDOWN:
 				inputs.type = INPUT_KEYBOARD;
 				inputs.ki.wVk = msg->wParam;
 				inputs.ki.wScan = 0;
@@ -150,8 +149,10 @@ DWORD WINAPI ClientThread(LPVOID lpParam)
 				inputs.ki.dwFlags = 0;
 				SendInput(1, &inputs, sizeof(INPUT));
 				break;
-			case WM_KEYUP:
+			case WM_SYSKEYDOWN:
 			case WM_SYSKEYUP:
+				break;
+			case WM_KEYUP:
 				inputs.type = INPUT_KEYBOARD;
 				inputs.ki.wVk = msg->wParam;
 				inputs.ki.wScan = 0;
@@ -333,7 +334,7 @@ DWORD WINAPI send_screen(LPVOID lpParam)
 	QueryPerformanceCounter(&startCount);
 
 	char m[100];
-	int t_begin, t_screen, t_copy, t_send;
+	int t_begin, t_screen, t_send;
 	FILE *fp = fopen("log.log", "a+");
 	while (true)
 	{
@@ -351,17 +352,13 @@ DWORD WINAPI send_screen(LPVOID lpParam)
 		MSG_SCREEN *msg_head = (MSG_SCREEN *)send_buf;
 		msg_head->dwBmpSize = htonl(len);
 		memcpy(send_buf + sizeof(MSG_SCREEN), pbuf, len);
-
-		QueryPerformanceCounter(&endCount);
-		t_copy = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
-		
-
 		int count = send(socket, send_buf, sizeof(MSG_SCREEN)+len, 0);
 
 		QueryPerformanceCounter(&endCount);
 		t_send = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
-		sprintf(m, " %d %d %d %d \t\t%d\n", t_begin, t_screen, t_copy, t_send, len);
+		sprintf(m, "Begin %d After SaveScreen %d Fin %d\t\t%d\n", 
+			t_begin, t_screen, t_send, len);
 		fwrite(m, strlen(m), 1, fp);
 	}
 	GdiplusShutdown(pGdiToken);
@@ -424,17 +421,21 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	t_begin = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
 	BitBlt(hmemdc, 0, 0, x, y, hdc, 0, 0, SRCCOPY);
-	SelectObject(hmemdc, hold);
 
 
 	QueryPerformanceCounter(&endCount);
 	t_screen = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
+	SelectObject(hmemdc, hold);
+	
+	Bitmap bit(hbmp, NULL);
+//	Bitmap bit(xs, ys), bit2(hbmp, NULL);
+//	Graphics g(&bit);
+//	g.ScaleTransform((float)xs / x, (float)ys / y);
+//	g.DrawImage(&bit2, 0, 0);
 
-	Bitmap bit(xs, ys), bit2(hbmp, NULL);
-	Graphics g(&bit);
-	g.ScaleTransform((float)xs / x, (float)ys / y);
-	g.DrawImage(&bit2, 0, 0);
+	QueryPerformanceCounter(&endCount);
+	t_copy = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
 	CLSID               encoderClsid;
 	EncoderParameters   encoderParameters;
@@ -448,8 +449,6 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	GetEncoderClsid(L"image/jpeg", &encoderClsid);
 
 
-	QueryPerformanceCounter(&endCount);
-	t_copy = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
 
 	{
@@ -475,7 +474,8 @@ void SaveCurScreenJpg(int xs, int ys, int quality, char **pBuf, int *len)
 	QueryPerformanceCounter(&endCount);
 	t_send = (double)(endCount.QuadPart - startCount.QuadPart) / freq.QuadPart * 1000;
 
-	sprintf(m, " %d %d %d %d \t\t%d\n", t_begin, t_screen, t_copy, t_send, *len);
+	sprintf(m, "CreCompDC %d\t BitBlt %d\t DrawImage %d\t Save %d\t\t%d\n", 
+		t_begin, t_screen, t_copy, t_send, *len);
 	fwrite(m, strlen(m), 1, fp);
 	fclose(fp);
 	::DeleteObject(hbmp);
